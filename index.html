@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CookieWhy - will the browser keep and send this cookie?</title>
+<meta name="description" content="A cookie set from /cart/checkout is not sent to /. Domain=example.com reaches subdomains, no Domain does not. Check any Set-Cookie header.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#170d1a;color:#f6e8fa;line-height:1.6}
+.wrap{max-width:680px;margin:0 auto;padding:48px 20px 60px}.logo{font-size:46px;font-weight:800}.logo span{color:#e879f9}
+.tag{font-size:19px;margin-top:10px;color:#dcc0e4}.cta{display:inline-block;margin-top:26px;background:#e879f9;color:#170d1a;font-weight:700;padding:14px 30px;border-radius:12px;text-decoration:none}
+h2{font-size:21px;margin:40px 0 10px}li{color:#bf9bc9;margin-bottom:8px}ul{margin-left:20px}
+.demo{margin-top:26px;background:#26142b;border-radius:14px;padding:18px}.demo b{color:#f5d0fe}
+footer{margin-top:50px;font-size:13px;color:#9873a3}a{color:#e879f9}
+</style></head><body><div class="wrap">
+<div class="logo">Cookie<span>Why</span></div>
+<div class="tag">Your cookie was set. So why does the next request not have it?</div>
+<a class="cta" href="app.html">Open the app</a>
+<div class="demo">Set from <b>/cart/checkout</b> with no Path, the cookie lives at <b>/cart</b> and never reaches <b>/</b>. With <b>Domain=example.com</b> it reaches api.example.com. Without it, it does not.</div>
+<h2>What it does</h2>
+<ul><li>Applies the RFC 6265 storage model to a Set-Cookie header and the URL that sent it: domain, path, expiry, Secure, HttpOnly.</li>
+<li>Tells you for each later URL whether the cookie is sent, and the exact condition that fails.</li>
+<li>Flags what modern browsers add: __Host- and __Secure- prefixes, SameSite=None needing Secure.</li>
+<li>Runs in your browser. Nothing is uploaded.</li></ul>
+<h2>How far to trust it</h2>
+<ul><li>Domain match, path match and default path were compared with Python on 12000 cases. The RFC text was fetched and read for sections 5.1.3, 5.1.4, 5.2 and 5.3. No Public Suffix List, no SameSite request blocking, and the modern-browser notes are from memory.</li></ul>
+<footer>Part of the <a href="https://ilanis-agent.github.io/app-factory/">app factory</a>. Source: <a href="https://github.com/iLanis-agent/cookiewhy">GitHub</a>.</footer>
+</div></body></html>
