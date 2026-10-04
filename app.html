@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CookieWhy app - will the browser keep and send this cookie?</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#170d1a;color:#f6e8fa;line-height:1.5}
+.wrap{max-width:860px;margin:0 auto;padding:28px 16px 50px}
+h1{font-size:28px}h1 span{color:#e879f9}.sub{color:#bf9bc9;margin:6px 0 14px}
+input,textarea{width:100%;background:#26142b;color:#f6e8fa;border:1px solid #55306a;border-radius:10px;padding:11px;font:15px ui-monospace,Menlo,Consolas,monospace}
+textarea{height:110px}label{display:block;font-size:13px;color:#bf9bc9;margin:12px 0 4px}
+.pre button{background:#2d1834;color:#f5d0fe;border:1px solid #55306a;border-radius:20px;padding:6px 12px;margin:0 6px 6px 0;cursor:pointer;font-size:13px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #381c40;vertical-align:top;word-break:break-all}th{color:#bf9bc9;font-weight:600}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;color:#f5d0fe}.err{color:#fca5a5}.ok{color:#86efac}.dim{color:#9873a3;font-size:12px}
+h2{font-size:16px;margin:20px 0 4px;color:#f0abfc}.note{background:#26142b;border-left:3px solid #e879f9;padding:8px 12px;margin:8px 0;border-radius:6px;font-size:14px}.foot{color:#9873a3;font-size:13px;margin-top:18px}a{color:#e879f9}
+</style></head><body><div class="wrap">
+<h1>Cookie<span>Why</span></h1>
+<div class="sub">Paste a Set-Cookie header and the URL that sent it. See whether the browser stores it, what it stores, and which URLs get it back.</div>
+<div class="pre" id="pre"></div>
+<label for="hdr">Set-Cookie header</label><input id="hdr" type="text" spellcheck="false" autocomplete="off">
+<label for="src">Received from (full URL)</label><input id="src" type="text" spellcheck="false" autocomplete="off">
+<label for="tgt">Later requests to check, one URL per line</label><textarea id="tgt" spellcheck="false"></textarea>
+<div id="out"></div>
+<div class="foot">Storage and matching follow RFC 6265 sections 5.1.3, 5.1.4, 5.2 and 5.3. Notes labelled "modern browsers" (Secure over http, __Host-, __Secure-, SameSite=None) go beyond RFC 6265 and come from memory of current browser behaviour, not from a fetched source. Expires uses the JavaScript date parser (approximation). No Public Suffix List. SameSite blocking on cross-site requests is not simulated. Runs in your browser; nothing is uploaded.</div>
+<div class="foot">Part of the <a href="https://ilanis-agent.github.io/app-factory/">app factory</a>. Source: <a href="https://github.com/iLanis-agent/cookiewhy">GitHub</a>.</div>
+</div>
+<script>
+(function (root) {
+  'use strict';
+  // RFC 6265 sections 5.1.3, 5.1.4, 5.2, 5.3 (rfc-editor.org/rfc/rfc6265). Notes marked "modern browsers" go beyond RFC 6265.
+  function isIP(h) { return /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.indexOf(':') >= 0; }
+  function domainMatch(host, domain) {
+    host = host.toLowerCase(); domain = domain.toLowerCase();
+    if (host === domain) return true;
+    return host.length > domain.length && host.slice(-domain.length) === domain && host[host.length - domain.length - 1] === '.' && !isIP(host);
+  }
+  function defaultPath(uriPath) {
+    if (!uriPath || uriPath[0] !== '/') return '/';
+    var i = uriPath.lastIndexOf('/');
+    return i === 0 ? '/' : uriPath.slice(0, i);
+  }
+  function pathMatch(reqPath, cookiePath) {
+    if (cookiePath === reqPath) return true;
+    if (reqPath.indexOf(cookiePath) === 0) {
+      if (cookiePath[cookiePath.length - 1] === '/') return true;
+      if (reqPath[cookiePath.length] === '/') return true;
+    }
+    return false;
+  }
+  function ws(s) { return s.replace(/^[ \t]+|[ \t]+$/g, ''); }
+  function parseUrl(u) { try { var x = new URL(u); return x; } catch (e) { return null; } }
+  function parse(header, url, nowMs) {
+    var u = parseUrl(url);
+    if (!u || !/^https?:$/.test(u.protocol)) return { ok: false, reason: 'Request URL must be a full http or https URL.' };
+    var host = u.hostname.toLowerCase(), now = nowMs === undefined ? Date.now() : nowMs;
+    var s = header.replace(/^\s*set-cookie:\s*/i, ''), issues = [];
+    var semi = s.indexOf(';'), nv = semi >= 0 ? s.slice(0, semi) : s, rest = semi >= 0 ? s.slice(semi) : '';
+    var eq = nv.indexOf('=');
+    if (eq < 0) return { ok: false, reason: 'No "=" in the name-value pair, so the whole header is ignored (RFC 6265 5.2 step 2).' };
+    var name = ws(nv.slice(0, eq)), value = ws(nv.slice(eq + 1));
+    if (name === '') return { ok: false, reason: 'Empty cookie name, so the whole header is ignored (5.2 step 5).' };
+    var attrs = [];
+    while (rest) {
+      rest = rest.slice(1); var j = rest.indexOf(';'), av = j >= 0 ? rest.slice(0, j) : rest; rest = j >= 0 ? rest.slice(j) : '';
+      var k = av.indexOf('='), an = ws(k >= 0 ? av.slice(0, k) : av), avv = ws(k >= 0 ? av.slice(k + 1) : '');
+      attrs.push([an.toLowerCase(), avv, an]);
+    }
+    var last = function (n) { var r; attrs.forEach(function (a) { if (a[0] === n) r = a; }); return r; };
+    var c = { name: name, value: value, host: host, httpOnly: false, secure: false, sameSite: undefined };
+    // 5.2.2 Max-Age, 5.2.1 Expires
+    var ma = null, ex = null;
+    attrs.forEach(function (a) {
+      if (a[0] === 'max-age') { if (/^[0-9-][0-9]*$/.test(a[1]) && a[1] !== '') { var d = parseInt(a[1], 10); ma = d <= 0 ? -Infinity : now + d * 1000; } else issues.push('Max-Age="' + a[1] + '" is not an integer, so it is ignored.'); }
+      if (a[0] === 'expires') { var t = Date.parse(a[1]); if (isNaN(t)) issues.push('Expires="' + a[1] + '" did not parse as a date, so it is ignored (approximate: this tool uses the JavaScript date parser, not the full 5.1.1 algorithm).'); else ex = t; }
+    });
+    if (ma !== null) { c.persistent = true; c.expiry = ma; if (ex !== null) issues.push('Both Max-Age and Expires are present: Max-Age wins (5.3 step 3).'); }
+    else if (ex !== null) { c.persistent = true; c.expiry = ex; } else { c.persistent = false; c.expiry = Infinity; }
+    // Domain
+    var da = last('domain'), dom = '';
+    if (da) { dom = da[1]; if (dom === '') { issues.push('Empty Domain attribute is ignored.'); } else { if (dom[0] === '.') dom = dom.slice(1); dom = dom.toLowerCase(); } }
+    if (dom) {
+      if (!domainMatch(host, dom)) return { ok: false, reason: 'Rejected: request host "' + host + '" does not domain-match Domain=' + dom + ' (5.3 step 6). A site cannot set cookies for a domain it is not in.', issues: issues };
+      c.hostOnly = false; c.domain = dom;
+      if (dom.indexOf('.') < 0) issues.push('Domain=' + dom + ' has a single label. Real browsers use the Public Suffix List to refuse suffixes like com or co.uk; this tool has no list, so check that yourself.');
+    } else { c.hostOnly = true; c.domain = host; }
+    var pa = last('path');
+    c.path = pa && pa[1] && pa[1][0] === '/' ? pa[1] : defaultPath(u.pathname);
+    if (pa && !(pa[1] && pa[1][0] === '/')) issues.push('Path="' + pa[1] + '" does not start with "/", so the default path ' + c.path + ' is used (5.2.4).');
+    if (!pa) issues.push('No Path: default path is ' + c.path + ' (the directory of the request path ' + u.pathname + '), not "/".');
+    c.secure = !!last('secure'); c.httpOnly = !!last('httponly');
+    var ss = last('samesite'); if (ss) { var v = ss[1].toLowerCase(); c.sameSite = v === 'strict' ? 'Strict' : v === 'lax' ? 'Lax' : v === 'none' ? 'None' : undefined; if (!c.sameSite) issues.push('SameSite=' + ss[1] + ' is not Strict, Lax or None (modern browsers treat it as Lax or ignore it).'); }
+    // modern browsers notes (beyond RFC 6265)
+    if (c.sameSite === 'None' && !c.secure) issues.push('Modern browsers: SameSite=None without Secure is rejected.');
+    if (/^__secure-/i.test(name) && !c.secure) issues.push('Modern browsers: a __Secure- cookie must have Secure (and come from https). It would be rejected.');
+    if (/^__host-/i.test(name)) { if (!c.secure || c.path !== '/' || !c.hostOnly) issues.push('Modern browsers: a __Host- cookie needs Secure, Path=/ and no Domain. This one would be rejected.'); }
+    if (c.secure && u.protocol === 'http:') issues.push('Modern browsers: a Secure cookie set over plain http is rejected. RFC 6265 itself allows it.');
+    if (/[\u0000-\u0008\u000a-\u001f\u007f]/.test(header)) issues.push('Control characters in the header: browsers drop the cookie.');
+    if (name.length + value.length > 4096) issues.push('Name plus value is over 4096 bytes: browsers drop it.');
+    if (c.expiry <= now) issues.push('Already expired: the browser deletes any existing cookie with the same name, domain and path instead of storing this.');
+    return { ok: true, cookie: c, issues: issues };
+  }
+  function willSend(c, url, nowMs) {
+    var u = parseUrl(url); if (!u) return { send: false, why: ['Not a URL.'] };
+    var host = u.hostname.toLowerCase(), now = nowMs === undefined ? Date.now() : nowMs, why = [];
+    if (c.hostOnly ? host !== c.domain : !domainMatch(host, c.domain)) why.push(c.hostOnly ? 'host-only cookie: "' + host + '" is not exactly ' + c.domain : '"' + host + '" does not domain-match ' + c.domain);
+    if (!pathMatch(u.pathname || '/', c.path)) why.push('path "' + (u.pathname || '/') + '" does not path-match ' + c.path);
+    if (c.secure && u.protocol !== 'https:') why.push('Secure cookie, request is not https');
+    if (c.expiry <= now) why.push('expired');
+    return { send: why.length === 0, why: why };
+  }
+  var api = { parse: parse, willSend: willSend, domainMatch: domainMatch, defaultPath: defaultPath, pathMatch: pathMatch };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.CookieWhy = api;
+})(typeof window !== 'undefined' ? window : this);
+
+var P={'Default path trap':['sid=abc','https://shop.example.com/cart/checkout','https://shop.example.com/cart/pay\nhttps://shop.example.com/\nhttps://shop.example.com/cartoon'],
+'Domain for subdomains':['sid=abc; Domain=example.com; Path=/; Secure; HttpOnly','https://www.example.com/login','https://example.com/\nhttps://api.example.com/x\nhttps://notexample.com/\nhttp://api.example.com/'],
+'Foreign domain':['track=1; Domain=ads.example.net','https://www.example.com/','https://ads.example.net/'],
+'__Host- misuse':['__Host-id=1; Secure; Domain=example.com; Path=/','https://example.com/','https://example.com/'],
+'Max-Age vs Expires':['a=b; Max-Age=0; Expires=Wed, 21 Oct 2099 07:28:00 GMT','https://example.com/','https://example.com/'],
+'SameSite=None':['a=b; SameSite=None','https://example.com/','https://example.com/']};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+var H=document.getElementById('hdr'),S=document.getElementById('src'),T=document.getElementById('tgt'),out=document.getElementById('out');
+function when(c){return c.expiry===Infinity?'session (until the browser closes)':c.expiry<=Date.now()?'already expired':new Date(c.expiry).toISOString()}
+function run(){if(!H.value.trim()){out.innerHTML='';return}var r=CookieWhy.parse(H.value,S.value),h='';
+ if(!r.ok){h+='<div class="note err">'+esc(r.reason)+'</div>'}
+ else{var c=r.cookie;h+='<h2>Stored cookie</h2><table>'+[['name',c.name],['value',c.value],['domain',c.domain+(c.hostOnly?'  (host-only: no subdomains)':'  (also sent to subdomains)')],['path',c.path],['expires',when(c)],['Secure',c.secure],['HttpOnly',c.httpOnly],['SameSite',c.sameSite||'(not set)']].map(function(x){return'<tr><th>'+x[0]+'</th><td><code>'+esc(x[1])+'</code></td></tr>'}).join('')+'</table>';
+  var urls=T.value.split('\n').map(function(x){return x.trim()}).filter(Boolean);
+  if(urls.length){h+='<h2>Sent with these requests?</h2><table>';urls.forEach(function(u){var w=CookieWhy.willSend(c,u);h+='<tr><td><code>'+esc(u)+'</code></td><td class="'+(w.send?'ok':'err')+'">'+(w.send?'sent':'not sent')+'</td><td>'+esc(w.why.join('; '))+'</td></tr>'});h+='</table>'}}
+ if(r.issues&&r.issues.length){h+='<h2>Notes</h2>';r.issues.forEach(function(n){h+='<div class="note">'+esc(n)+'</div>'})}
+ out.innerHTML=h}
+[H,S,T].forEach(function(e){e.addEventListener('input',run)});
+var pre=document.getElementById('pre');Object.keys(P).forEach(function(k){var b=document.createElement('button');b.textContent=k;b.onclick=function(){H.value=P[k][0];S.value=P[k][1];T.value=P[k][2];run()};pre.appendChild(b)});
+H.value=P['Default path trap'][0];S.value=P['Default path trap'][1];T.value=P['Default path trap'][2];run();
+</script></body></html>
